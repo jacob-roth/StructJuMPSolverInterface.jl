@@ -3,7 +3,7 @@
 #
 include("pips_serial_cfunc.jl")
 
-module PipsNlpInterfaceSerial 
+module PipsNlpInterfaceSerial
 
 using PipsNlpSolverSerial
 
@@ -12,8 +12,8 @@ using StructJuMPSolverInterface
 
 import MathProgBase
 
-type NonStructJuMPModel <: ModelInterface
-    model::JuMP.Model 
+mutable struct NonStructJuMPModel <: ModelInterface
+    model::JuMP.Model
     jac_I::Vector{Int}
     jac_J::Vector{Int}
     hess_I::Vector{Int}
@@ -38,11 +38,11 @@ type NonStructJuMPModel <: ModelInterface
     eval_h::Function
 
     function NonStructJuMPModel(model)
-        instance = new(model, 
+        instance = new(model,
             Vector{Int}(), Vector{Int}(), Vector{Int}(), Vector{Int}(),
             Vector{Int}(), Vector{Int}(), 0 , 0, 0
             )
-        
+
         instance.write_solution = function(x)
             @assert length(x) == getTotalNumVars(m)
             m = instance.model
@@ -121,13 +121,13 @@ type NonStructJuMPModel <: ModelInterface
             # @show g_L, g_U
             return x_L, x_U, g_L, g_U
         end
-        
+
         instance.eval_f = function(x)
             m = instance.model
             obj = 0.0
             start_idx = 1
             for i=0:num_scenarios(m)
-                x_new = strip_x(m,i,x,start_idx)    
+                x_new = strip_x(m,i,x,start_idx)
                 obj += MathProgBase.eval_f(get_nlp_evaluator(m,i),x_new)
                 start_idx += getNumVars(m,i)
             end
@@ -135,7 +135,7 @@ type NonStructJuMPModel <: ModelInterface
             # @show obj
             # @show x
             return obj;
-        end 
+        end
 
         instance.eval_g = function(x,g)
             m = instance.model
@@ -144,7 +144,7 @@ type NonStructJuMPModel <: ModelInterface
             g_start_idx = 1
             for i=0:num_scenarios(m)
                 x_new = strip_x(instance.model,i,x,start_idx)
-                ncon = getNumCons(m,i)    
+                ncon = getNumCons(m,i)
                 g_new = Vector{Float64}(ncon)
                 e = get_nlp_evaluator(m,i)
                 MathProgBase.eval_g(e,g_new,strip_x(instance.model,i,x,start_idx))
@@ -166,7 +166,7 @@ type NonStructJuMPModel <: ModelInterface
 
                 g_f = Vector{Float64}(length(x_new))
                 MathProgBase.eval_grad_f(e,g_f,x_new)
-                nx = getNumVars(m,i) 
+                nx = getNumVars(m,i)
 
                 array_copy(g_f,1,grad_f,start_idx,nx)
 
@@ -184,7 +184,7 @@ type NonStructJuMPModel <: ModelInterface
         end
 
         instance.eval_jac_g = function(x,mode,rows,cols,nzvals) #x, mode, irows, kcols, values)
-            # @printf("+++++++++++ eval_jac_g %s \n", mode) 
+            # @printf("+++++++++++ eval_jac_g %s \n", mode)
             m = instance.model
             if mode==:Structure
                 mat = sparse(instance.jac_I,instance.jac_J,ones(Float64,length(instance.jac_I)))
@@ -208,7 +208,7 @@ type NonStructJuMPModel <: ModelInterface
                 end
                 @assert length(instance.jac_I) == length(instance.jac_J) == length(value)
                 mat = sparse(instance.jac_I,instance.jac_J,value, getTotalNumCons(instance.model), getTotalNumVars(instance.model), keepzeros=true)
-                
+
                 jac_I = instance.jac_I
                 jac_J = instance.jac_J
                 # @printf( "m=%d; n=%d; \n", getTotalNumCons(instance.model), getTotalNumVars(instance.model))
@@ -343,7 +343,7 @@ type NonStructJuMPModel <: ModelInterface
 
             offset += getNumVars(m,i)
         end
-        return instance  
+        return instance
     end
 end
 
@@ -367,7 +367,7 @@ function structJuMPSolve(model; suppress_warmings=false,kwargs...)
     nm.get_x0(prob.x)
     status = solveProblem(prob)
     nm.write_solution(prob.x)
-    
+
     return PIPSRetCodeToSolverInterfaceCode[status]
 end
 

@@ -2,27 +2,27 @@
 # Wrapper for the paralel/structured PIPS-NLP interface
 #
 
-module PipsNlpSolver  
+module PipsNlpSolver
 
 using StructJuMPSolverInterface
 import MPI
 
 try
   sharedLib=ENV["PIPS_NLP_PAR_SHARED_LIB"]
-  
-  # Explicitly check if the file exists. dlopen sometimes does not throw an 
+
+  # Explicitly check if the file exists. dlopen sometimes does not throw an
   # error for invalid filenames, resulting in a seg fault)
   if(!isfile(sharedLib))
     error(string("The specified shared library ([", sharedLib, "]) does not exist"))
-  end  
+  end
   global const libparpipsnlp=Libdl.dlopen(get(ENV,"PIPS_NLP_PAR_SHARED_LIB",""))
-catch 
+catch
   warn("Could not load PIPS-NLP shared library. Make sure the ENV variable 'PIPS_NLP_PAR_SHARED_LIB' points to its location, usually in the PIPS repo at PIPS/build_pips/PIPS-NLP/libparpipsnlp.so")
   rethrow()
 end
 
 #######################
-type FakeModel <: ModelInterface
+mutable struct FakeModel <: ModelInterface
     sense::Symbol
     status::Int
     nscen::Int
@@ -54,12 +54,12 @@ type FakeModel <: ModelInterface
     str_eval_jac_g::Function
     str_eval_h::Function
     str_write_solution::Function
-           
+
 
     function FakeModel(sense::Symbol,status::Int,nscen::Int, str_init_x0, str_prob_info, str_eval_f, str_eval_g,str_eval_grad_f,str_eval_jac_g, str_eval_h)
         instance = new(sense,status,nscen,Dict{Int,Int}(),Dict{Int,Int}(),Dict{Int,Int}(),Dict{Int,Int}())
         instance.str_init_x0 = str_init_x0
-        instance.str_prob_info = str_prob_info 
+        instance.str_prob_info = str_prob_info
         instance.str_eval_f = str_eval_f
         instance.str_eval_g = str_eval_g
         instance.str_eval_grad_f = str_eval_grad_f
@@ -110,13 +110,13 @@ type FakeModel <: ModelInterface
         return instance
     end
 end
- 
+
 
 
 #######################
 
 
-type PipsNlpProblemStruct
+mutable struct PipsNlpProblemStruct
     ref::Ptr{Void}
     model::ModelInterface
     comm::MPI.Comm
@@ -137,7 +137,7 @@ type PipsNlpProblemStruct
 
     t_jl_str_total::Float64
     t_jl_eval_total::Float64
-    
+
     function PipsNlpProblemStruct(comm, model, prof)
         prob = new(C_NULL, model, comm, prof,-3
             ,0.0,0.0,0.0,0.0,0.0
@@ -145,7 +145,7 @@ type PipsNlpProblemStruct
             ,0.0,0.0
             )
         finalizer(prob, freeProblemStruct)
-        
+
         return prob
     end
 end
@@ -154,7 +154,7 @@ immutable CallBackData
 	prob::Ptr{Void}
 	row_node_id::Cint
     col_node_id::Cint
-    flag::Cint  
+    flag::Cint
 end
 
 export  ModelInterface, FakeModel,
@@ -183,7 +183,7 @@ function str_init_x0_wrapper(x0_ptr::Ptr{Float64}, cbd::Ptr{CallBackData})
     @timing prob.prof tic()
     prob.model.str_init_x0(colid,x0)
     @timing prob.prof prob.t_jl_init_x0 += toq()
-    
+
     return Int32(1)
 end
 
@@ -202,7 +202,7 @@ function str_prob_info_wrapper(n_ptr::Ptr{Cint}, col_lb_ptr::Ptr{Float64}, col_u
     colid = Int(data.col_node_id)
     flag = Int(data.flag)
     assert(rowid == colid)
-	
+
 	mode = (col_lb_ptr == C_NULL) ? (:Structure) : (:Values)
     # @show flag
     if flag == 0
@@ -232,7 +232,7 @@ function str_prob_info_wrapper(n_ptr::Ptr{Cint}, col_lb_ptr::Ptr{Float64}, col_u
             @timing prob.prof tic()
     		prob.model.str_prob_info(colid,flag,mode,col_lb,col_ub,row_lb,row_ub)
             @timing prob.prof prob.t_jl_str_prob_info += toq()
-            
+
 
     		neq = 0
     		nineq = 0
@@ -245,7 +245,7 @@ function str_prob_info_wrapper(n_ptr::Ptr{Cint}, col_lb_ptr::Ptr{Float64}, col_u
     		end
     		assert(neq+nineq == length(row_lb) == m)
     		prob.model.set_num_eq_cons(colid,neq)
-    		prob.model.set_num_ineq_cons(colid,nineq) 
+    		prob.model.set_num_ineq_cons(colid,nineq)
     	end
     else
         @assert flag ==1
@@ -285,7 +285,7 @@ function str_eval_f_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, obj_ptr:
     @timing prob.prof tic()
     new_obj = convert(Float64, prob.model.str_eval_f(colid,x0,x1))::Float64
     @timing prob.prof prob.t_jl_eval_f += toq()
-    
+
     # Fill out the pointer
     unsafe_store!(obj_ptr, new_obj)
     # Done
@@ -294,7 +294,7 @@ end
 
 # Constraints (eval_g)
 function str_eval_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, eq_g_ptr::Ptr{Float64}, inq_g_ptr::Ptr{Float64}, cbd::Ptr{CallBackData})
-    # @show " julia - eval_g_wrapper " 
+    # @show " julia - eval_g_wrapper "
     data = unsafe_load(cbd)
     # @show data
     userdata = data.prob
@@ -315,14 +315,14 @@ function str_eval_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, eq_g_ptr
     @timing prob.prof tic()
     prob.model.str_eval_g(colid,x0,x1,new_eq_g,new_inq_g)
     @timing prob.prof prob.t_jl_eval_g += toq()
-    
+
     # Done
     return Int32(1)
 end
 
 # Objective gradient (eval_grad_f)
 function str_eval_grad_f_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, grad_f_ptr::Ptr{Float64}, cbd::Ptr{CallBackData})
-    # @show " julia -  eval_grad_f_wrapper "  
+    # @show " julia -  eval_grad_f_wrapper "
     # Extract Julia the problem from the pointer
     # @show cbd
     data = unsafe_load(cbd)
@@ -343,7 +343,7 @@ function str_eval_grad_f_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, gra
     @timing prob.prof tic()
     prob.model.str_eval_grad_f(rowid,colid,x0,x1,new_grad_f)
     @timing prob.prof prob.t_jl_eval_grad_f += toq()
-    
+
     if prob.model.get_sense() == :Max
         new_grad_f *= -1.0
     end
@@ -352,13 +352,13 @@ function str_eval_grad_f_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, gra
 end
 
 # Jacobian (eval_jac_g)
-function str_eval_jac_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, 
-	e_nz_ptr::Ptr{Cint}, e_values_ptr::Ptr{Float64}, e_row_ptr::Ptr{Cint}, e_col_ptr::Ptr{Cint}, 
-	i_nz_ptr::Ptr{Cint}, i_values_ptr::Ptr{Float64}, i_row_ptr::Ptr{Cint}, i_col_ptr::Ptr{Cint},  
+function str_eval_jac_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64},
+	e_nz_ptr::Ptr{Cint}, e_values_ptr::Ptr{Float64}, e_row_ptr::Ptr{Cint}, e_col_ptr::Ptr{Cint},
+	i_nz_ptr::Ptr{Cint}, i_values_ptr::Ptr{Float64}, i_row_ptr::Ptr{Cint}, i_col_ptr::Ptr{Cint},
 	cbd::Ptr{CallBackData}
 	)
-    # @show " julia -  eval_jac_g_wrapper " 
-    # Extract Julia the problem from the pointer  
+    # @show " julia -  eval_jac_g_wrapper "
+    # Extract Julia the problem from the pointer
     data = unsafe_load(cbd)
     # @show data
     userdata = data.prob
@@ -368,13 +368,13 @@ function str_eval_jac_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64},
     flag = Int(data.flag)
     n0 = prob.model.get_num_cols(0)
     n1 = prob.model.get_num_cols(rowid) #we can do this because of 2-level and no linking constraint
-    # @show n0, n1 
+    # @show n0, n1
     x0 = unsafe_wrap(Array, x0_ptr, n0)
     x1 = unsafe_wrap(Array, x1_ptr, n1)
     # @show x0
-    # @show x1 
-    nrow = prob.model.get_num_rows(rowid) 
-    ncol = prob.model.get_num_cols(colid) 
+    # @show x1
+    nrow = prob.model.get_num_rows(rowid)
+    ncol = prob.model.get_num_cols(colid)
     #@show prob
     # Determine mode
     mode = (e_col_ptr == C_NULL && i_col_ptr == C_NULL) ? (:Structure) : (:Values)
@@ -386,11 +386,11 @@ function str_eval_jac_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64},
     		i_values = unsafe_wrap(Array,i_values_ptr,0)
     		i_colptr = unsafe_wrap(Array,i_col_ptr,0)
     		i_rowidx = unsafe_wrap(Array,i_row_ptr,0)
-            
+
             @timing prob.prof tic()
             (e_nz,i_nz) = prob.model.str_eval_jac_g(rowid,colid,flag,x0,x1,mode,e_rowidx,e_colptr,e_values,i_rowidx,i_colptr,i_values)
             @timing prob.prof prob.t_jl_str_eval_jac_g += toq()
-            
+
             unsafe_store!(e_nz_ptr,convert(Cint,e_nz)::Cint)
     		unsafe_store!(i_nz_ptr,convert(Cint,i_nz)::Cint)
     		# @show "structure - ",(e_nz,i_nz)
@@ -405,7 +405,7 @@ function str_eval_jac_g_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64},
         	i_rowidx = unsafe_wrap(Array,i_row_ptr,i_nz)
         	i_colptr = unsafe_wrap(Array,i_col_ptr,ncol+1)
             # @show x0
-            # @show x1 
+            # @show x1
             @timing prob.prof tic()
         	prob.model.str_eval_jac_g(rowid,colid,flag,x0,x1,mode,e_rowidx,e_colptr,e_values,i_rowidx,i_colptr,i_values)
             @timing prob.prof prob.t_jl_eval_jac_g += toq()
@@ -429,7 +429,7 @@ end
 
 # Hessian
 function str_eval_h_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, lambda_ptr::Ptr{Float64}, nz_ptr::Ptr{Cint}, values_ptr::Ptr{Float64}, row_ptr::Ptr{Cint}, col_ptr::Ptr{Cint}, cbd::Ptr{CallBackData})
-    # @show " julia - eval_h_wrapper " 
+    # @show " julia - eval_h_wrapper "
     # Extract Julia the problem from the pointer
     data = unsafe_load(cbd)
     # @show data
@@ -440,7 +440,7 @@ function str_eval_h_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, lambda_p
     flag = Int(data.flag)
     # @message @sprintf(" julia - eval_h_wrapper - %d %d %d", rowid, colid, flag)
     @timing prob.prof begin
-        if rowid == colid ==0 
+        if rowid == colid ==0
             prob.n_iter += 1
             if prob.n_iter == 0
                 prob.t_jl_str_total = t_reset(prob)
@@ -451,14 +451,14 @@ function str_eval_h_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, lambda_p
 
     high = max(rowid,colid)
     low  = min(rowid,colid)
-    n0 = prob.model.get_num_cols(0) 
+    n0 = prob.model.get_num_cols(0)
     n1 = prob.model.get_num_cols(high)
     x0 = unsafe_wrap(Array,x0_ptr,n0)
     x1 = unsafe_wrap(Array,x1_ptr,n1)
     # @show x0
     # @show x1
     ncol = prob.model.get_num_cols(low)
-    g0 = prob.model.get_num_rows(high) 
+    g0 = prob.model.get_num_rows(high)
     # @show g0
     # @show ncol
     lambda = unsafe_wrap(Array,lambda_ptr,g0)
@@ -472,11 +472,11 @@ function str_eval_h_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, lambda_p
     	values = unsafe_wrap(Array,values_ptr,0)
 		colptr = unsafe_wrap(Array,col_ptr,0)
 		rowidx = unsafe_wrap(Array,row_ptr,0)
-        
+
         @timing prob.prof tic()
 		nz = prob.model.str_eval_h(rowid,colid,flag, x0,x1,obj_factor,lambda,mode,rowidx,colptr,values)
         @timing prob.prof prob.t_jl_str_eval_h += toq()
-        
+
 		unsafe_store!(nz_ptr,convert(Cint,nz)::Cint)
 		# @show "structure - ", nz
     else
@@ -490,7 +490,7 @@ function str_eval_h_wrapper(x0_ptr::Ptr{Float64}, x1_ptr::Ptr{Float64}, lambda_p
         @timing prob.prof prob.t_jl_eval_h += toq()
     end
     # Done
-    
+
     return Int32(1)
 end
 
@@ -513,7 +513,7 @@ function str_write_solution_wrapper(x_ptr::Ptr{Float64}, y_eq_ptr::Ptr{Float64},
     @timing prob.prof tic()
     prob.model.str_write_solution(rowid,x,y_eq,y_ieq)
     @timing prob.prof prob.t_jl_write_solution += toq()
-    
+
     return Int32(1)
 end
 ###########################################################################
@@ -527,37 +527,37 @@ function createProblemStruct(comm::MPI.Comm, model::ModelInterface, prof::Bool)
     str_eval_f_cb = cfunction(str_eval_f_wrapper,Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{CallBackData}) )
     str_eval_g_cb = cfunction(str_eval_g_wrapper,Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{CallBackData}) )
     str_eval_grad_f_cb = cfunction(str_eval_grad_f_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{CallBackData}) )
-    str_eval_jac_g_cb = cfunction(str_eval_jac_g_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, 
-    	Ptr{Cint}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, 
-    	Ptr{Cint}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, 
+    str_eval_jac_g_cb = cfunction(str_eval_jac_g_wrapper, Cint, (Ptr{Float64}, Ptr{Float64},
+    	Ptr{Cint}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint},
+    	Ptr{Cint}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint},
     	Ptr{CallBackData}))
     str_eval_h_cb = cfunction(str_eval_h_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{Cint}, Ptr{Float64}, Ptr{Cint}, Ptr{Cint}, Ptr{CallBackData}))
     str_write_solution_cb = cfunction(str_write_solution_wrapper, Cint, (Ptr{Float64}, Ptr{Float64}, Ptr{Float64}, Ptr{CallBackData}))
-    
+
     # println(" callback created ")
     prob = PipsNlpProblemStruct(comm, model, prof)
     # @show prob
     ret = ccall(Libdl.dlsym(libparpipsnlp,:CreatePipsNlpProblemStruct),Ptr{Void},
-            (MPI.Comm, 
-            Cint, Ptr{Void}, Ptr{Void}, 
-	    Ptr{Void}, Ptr{Void}, Ptr{Void}, 
+            (MPI.Comm,
+            Cint, Ptr{Void}, Ptr{Void},
+	    Ptr{Void}, Ptr{Void}, Ptr{Void},
 	    Ptr{Void}, Ptr{Void}, Ptr{Void},Any
             ),
-            comm, 
+            comm,
             model.get_num_scen(),
             str_init_x0_cb,
             str_prob_info_cb,
-            str_eval_f_cb, 
+            str_eval_f_cb,
             str_eval_g_cb,
-            str_eval_grad_f_cb, 
-            str_eval_jac_g_cb, 
+            str_eval_grad_f_cb,
+            str_eval_jac_g_cb,
             str_eval_h_cb,
             str_write_solution_cb,
             prob
             )
     # println(" ccall CreatePipsNlpProblemStruct done ")
-    # @show ret   
-    
+    # @show ret
+
     if ret == C_NULL
         error("PIPS-NLP: Failed to construct problem.")
     else
@@ -571,8 +571,8 @@ end
 function solveProblemStruct(prob::PipsNlpProblemStruct)
     # println("solveProblemStruct - julia")
     # @show prob
-    
-    ret = ccall(Libdl.dlsym(libparpipsnlp,:PipsNlpSolveStruct), Cint, 
+
+    ret = ccall(Libdl.dlsym(libparpipsnlp,:PipsNlpSolveStruct), Cint,
             (Ptr{Void},),
             prob.ref)
     # @show ret
@@ -594,16 +594,16 @@ end
 
 function report_total_now(prob::PipsNlpProblemStruct)
     total = 0.0
-    total += prob.t_jl_init_x0 
-    total += prob.t_jl_str_prob_info 
-    total += prob.t_jl_eval_f 
-    total += prob.t_jl_eval_g 
-    total += prob.t_jl_eval_grad_f 
-    total += prob.t_jl_eval_jac_g 
-    total += prob.t_jl_str_eval_jac_g 
-    total += prob.t_jl_eval_h 
-    total += prob.t_jl_str_eval_h 
-    total += prob.t_jl_write_solution 
+    total += prob.t_jl_init_x0
+    total += prob.t_jl_str_prob_info
+    total += prob.t_jl_eval_f
+    total += prob.t_jl_eval_g
+    total += prob.t_jl_eval_grad_f
+    total += prob.t_jl_eval_jac_g
+    total += prob.t_jl_str_eval_jac_g
+    total += prob.t_jl_eval_h
+    total += prob.t_jl_str_eval_h
+    total += prob.t_jl_write_solution
     return total
 end
 

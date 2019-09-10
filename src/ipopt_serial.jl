@@ -5,8 +5,8 @@ using Ipopt
 
 import MathProgBase
 
-type NonStructJuMPModel <: ModelInterface
-    model::JuMP.Model 
+mutable struct NonStructJuMPModel <: ModelInterface
+    model::JuMP.Model
     jac_I::Vector{Int}
     jac_J::Vector{Int}
     hess_I::Vector{Int}
@@ -28,7 +28,7 @@ type NonStructJuMPModel <: ModelInterface
     eval_h::Function
 
     function NonStructJuMPModel(model)
-        instance = new(model, 
+        instance = new(model,
             Vector{Int}(), Vector{Int}(), Vector{Int}(), Vector{Int}(),
             Vector{Int}(), Vector{Int}()
             )
@@ -106,18 +106,18 @@ type NonStructJuMPModel <: ModelInterface
             end
             return x_L, x_U, g_L, g_U
         end
-        
+
         instance.eval_f = function(x)
             m = instance.model
             objv = 0.0
             start_idx = 1
             for i=0:num_scenarios(m)
-                x_new = strip_x(m,i,x,start_idx)    
+                x_new = strip_x(m,i,x,start_idx)
                 objv += MathProgBase.eval_f(get_nlp_evaluator(m,i),x_new)
                 start_idx += getNumVars(m,i)
             end
             return objv;
-        end 
+        end
 
         instance.eval_g = function(x,g)
             m = instance.model
@@ -126,7 +126,7 @@ type NonStructJuMPModel <: ModelInterface
             g_start_idx = 1
             for i=0:num_scenarios(m)
                 x_new = strip_x(instance.model,i,x,start_idx)
-                ncon = getNumCons(m,i)    
+                ncon = getNumCons(m,i)
                 g_new = Vector{Float64}(ncon)
                 e = get_nlp_evaluator(m,i)
                 MathProgBase.eval_g(e,g_new,strip_x(instance.model,i,x,start_idx))
@@ -146,7 +146,7 @@ type NonStructJuMPModel <: ModelInterface
 
                 g_f = Vector{Float64}(length(x_new))
                 MathProgBase.eval_grad_f(e,g_f,x_new)
-                nx = getNumVars(m,i) 
+                nx = getNumVars(m,i)
 
                 array_copy(g_f,1,grad_f,start_idx,nx)
 
@@ -164,7 +164,7 @@ type NonStructJuMPModel <: ModelInterface
         instance.eval_jac_g = function(x,mode,rows,cols,values)
             m = instance.model
             if mode==:Structure
-                @assert length(rows) == length(cols) 
+                @assert length(rows) == length(cols)
                 for i = 1:length(rows)
                     rows[i] = instance.jac_I[i]
                     cols[i] = instance.jac_J[i]
@@ -189,7 +189,7 @@ type NonStructJuMPModel <: ModelInterface
         instance.eval_h = function(x, mode, rows, cols, obj_factor, lambda, values)
             m = instance.model
             if mode == :Structure
-                @assert length(rows) == length(cols) 
+                @assert length(rows) == length(cols)
                 for i = 1:length(rows)
                     rows[i] = instance.hess_I[i]
                     cols[i] = instance.hess_J[i]
@@ -278,7 +278,7 @@ type NonStructJuMPModel <: ModelInterface
             offset += getNumVars(m,i)
         end
 
-        return instance  
+        return instance
     end
 end
 
