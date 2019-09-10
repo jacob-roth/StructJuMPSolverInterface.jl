@@ -3,7 +3,7 @@
 #
 
 module StructJuMPSolverInterface
-import Printf
+using Printf
 import MPI
 
 # Struct Model interface
