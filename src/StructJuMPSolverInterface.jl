@@ -10,7 +10,7 @@ import MPI
 abstract type ModelInterface end
 #abstract ModelInterface
 
-export ModelInterface, KnownSolvers, sj_solve, getModel, getVarValue, getVarValues, getNumVars, 
+export ModelInterface, KnownSolvers, sj_solve, getModel, getVarValue, getVarValues, getNumVars,
         getNumCons, getTotalNumVars, getTotalNumCons, getLocalBlocksIds, getLocalChildrenIds,
         getObjectiveVal
 
@@ -51,7 +51,7 @@ function sj_solve(model; solver="Unknown", with_prof=false, suppress_warmings=fa
         Base.error("Known solvers are: ", keys(KnownSolvers))
     end
     status = KnownSolvers[solver](model; with_prof=with_prof, suppress_warmings=false,kwargs...)
-    
+
     if !haskey(ApplicationReturnStatus,status)
       Base.warn("solver can't solve the problem");
       return :Error
@@ -67,11 +67,11 @@ include("helper.jl")
 # include("nonstruct_helper.jl")
 
 function getModel(m,id)
-    return id==0?m:getchildren(m)[id]
+    return id==0 ? m : getchildren(m)[id]
 end
 
 function getVarValues(m,id)
-    mm = getModel(m,id); 
+    mm = getModel(m,id);
     v = Float64[];
     for i = 1:getNumVars(m,id)
         v = [v;JuMP.getvalue(JuMP.Variable(mm,i))]
@@ -151,7 +151,7 @@ function getLocalBlocksIds(m)
   numScens = num_scenarios(m)
   d = div(numScens,mysize)
   s = myrank * d + 1
-  e = myrank == (mysize-1)? numScens:s+d-1
+  e = myrank == (mysize-1) ? numScens : s+d-1
   ids=[0;s:e]
 end
 
@@ -161,7 +161,7 @@ function getLocalChildrenIds(m)
     numScens = num_scenarios(m)
     d = div(numScens,mysize)
     s = myrank * d + 1
-    e = myrank == (mysize-1)? numScens:s+d-1
+    e = myrank == (mysize-1) ? numScens : s+d-1
     ids = collect(s:e)
 end
 
