@@ -3,7 +3,7 @@
 #
 
 module StructJuMPSolverInterface
-using Printf
+using Printf, SparseArrays
 import MPI
 
 # Struct Model interface
