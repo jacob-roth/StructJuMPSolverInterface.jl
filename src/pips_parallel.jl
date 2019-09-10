@@ -151,7 +151,7 @@ mutable struct StructJuMPModel <: ModelInterface
 
             for i=1:nvar
                 x0[i] = getvalue(Variable(mm,i))
-                isnan(x0[i])?x0[i]=1.0:nothing
+                isnan(x0[i]) ? x0[i]=1.0 : nothing
             end
             # @show x0;
         end

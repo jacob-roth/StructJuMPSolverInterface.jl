@@ -64,7 +64,7 @@ mutable struct NonStructJuMPModel <: ModelInterface
                 mm = getModel(m,i)
                 for j = 1:getNumVars(m,i)
                     v_j = getvalue(Variable(mm,j))
-                    x[idx] = isnan(v_j)? 1.0:v_j
+                    x[idx] = isnan(v_j) ? 1.0 : v_j
                     idx += 1
                 end
             end

@@ -150,7 +150,7 @@ mutable struct PipsNlpProblemStruct
     end
 end
 
-immutable CallBackData
+struct CallBackData
 	prob::Ptr{Void}
 	row_node_id::Cint
     col_node_id::Cint
